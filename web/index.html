@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PayDesk Dashboard</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js"></script>
+</head>
+<body data-title="Dashboard" data-sub="Overview of your workforce and payroll tools">
+<div class="layout">
+  <aside id="side"></aside>
+  <div class="content">
+    <header class="topbar" id="top"></header>
+    <main>
+      <div class="grid stats">
+        <div class="stat"><span>Total employees</span><b id="s-count">-</b></div>
+        <div class="stat"><span>Departments</span><b id="s-depts">-</b></div>
+        <div class="stat"><span>Average hourly rate</span><b id="s-avg">-</b></div>
+        <div class="stat"><span>Highest hourly rate</span><b id="s-max">-</b></div>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <div class="card-head"><h2>Team by department</h2><a class="btn ghost sm" href="employees.html">Manage</a></div>
+          <div id="depts"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Quick actions</h2></div>
+          <div class="grid" style="gap:10px">
+            <a class="btn" href="employees.html">Add a new employee</a>
+            <a class="btn ghost" href="payroll.html">Calculate an employee's pay</a>
+            <a class="btn ghost" href="reports.html">Generate a payslip</a>
+            <a class="btn ghost" href="reports.html#summary">View payroll summary</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Employees</h2><a class="btn ghost sm" href="employees.html">View all</a></div>
+        <div class="scroll"><table>
+          <thead><tr><th>Employee</th><th>ID</th><th>Department</th><th class="num">Hourly rate</th></tr></thead>
+          <tbody id="recent"></tbody>
+        </table></div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+(async () => {
+  const r = await api("GET", "/api/employees");
+  if (!r.ok) { toast(r.message, true); return; }
+  const list = r.employees;
+  const depts = {};
+  list.forEach(e => depts[e.department || "Unassigned"] = (depts[e.department || "Unassigned"] || 0) + 1);
+  const rates = list.map(e => Number(e.rate));
+  document.getElementById("s-count").textContent = list.length;
+  document.getElementById("s-depts").textContent = Object.keys(depts).length;
+  document.getElementById("s-avg").textContent = rates.length ? money(rates.reduce((a, b) => a + b, 0) / rates.length) : "0.00";
+  document.getElementById("s-max").textContent = rates.length ? money(Math.max(...rates)) : "0.00";
+  document.getElementById("depts").innerHTML = Object.entries(depts).map(([d, n]) =>
+    `<div class="dept-row"><div class="top"><span>${esc(d)}</span><b>${n}</b></div><div class="bar"><i class="net" style="width:${n / list.length * 100}%"></i></div></div>`).join("")
+    || '<div class="empty">No employees yet.</div>';
+  document.getElementById("recent").innerHTML = list.map(e =>
+    `<tr><td><div class="person"><div class="avatar">${esc(initials(e.name))}</div>${esc(e.name)}</div></td><td>${esc(e.id)}</td><td>${esc(e.department)}</td><td class="num">${money(e.rate)}</td></tr>`).join("")
+    || '<tr><td colspan="4" class="empty">No employees yet.</td></tr>';
+})();
+</script>
+</body>
+</html>

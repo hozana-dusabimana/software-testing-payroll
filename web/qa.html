@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QA Console - PayDesk</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js"></script>
+</head>
+<body data-title="QA Console" data-sub="Run the automated test suites and verify each functional requirement against the live system">
+<div class="layout">
+  <aside id="side"></aside>
+  <div class="content">
+    <header class="topbar" id="top"></header>
+    <main>
+      <div class="tabs">
+        <button class="active" data-tab="suites">Test suites</button>
+        <button data-tab="trace">Requirements traceability</button>
+        <button data-tab="valid">Validation checks</button>
+        <button data-tab="pay">Payment test cases (FR2)</button>
+      </div>
+
+      <!-- Test suites -->
+      <div id="tab-suites">
+        <div class="card">
+          <div class="toolbar">
+            <button class="btn" id="run">Run all tests</button>
+            <select id="filter"><option value="">All requirements</option></select>
+            <select id="kind"><option value="">Black-box and white-box</option><option value="BB">Black-box only</option><option value="WB">White-box only</option></select>
+          </div>
+        </div>
+        <div id="results" style="display:none">
+          <div class="grid stats">
+            <div class="stat"><span>Test cases</span><b id="n-all"></b></div>
+            <div class="stat"><span>Passed</span><b class="pass" id="n-pass"></b></div>
+            <div class="stat"><span>Failed</span><b class="fail" id="n-fail"></b></div>
+          </div>
+          <div class="card">
+            <p id="coverage" class="muted" style="margin-top:0"></p>
+            <div class="scroll"><table>
+              <thead><tr><th>ID</th><th>Req</th><th>Description</th><th>Input</th><th>Expected</th><th>Actual</th><th>Status</th></tr></thead>
+              <tbody id="rows"></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Traceability -->
+      <div id="tab-trace" style="display:none">
+        <div class="card">
+          <div class="card-head"><h2>Requirements and sub-requirements</h2><button class="btn" id="trun">Run tests and refresh</button></div>
+          <p class="muted" style="margin-top:0">Each sub-requirement with the test cases that verify it. Status is taken from the live test run.</p>
+          <div class="scroll"><table>
+            <thead><tr><th>Requirement</th><th>Description</th><th>Test cases</th><th>Status</th></tr></thead>
+            <tbody id="trows"><tr><td colspan="4" class="empty">Press “Run tests and refresh”.</td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- Validation -->
+      <div id="tab-valid" style="display:none">
+        <div class="card">
+          <div class="card-head"><h2>Invalid requests must show a clear message</h2>
+            <div class="toolbar"><button class="btn" id="vall">Run all</button><button class="btn ghost" id="vreset">Reset data</button></div></div>
+          <p class="muted" style="margin-top:0">Each check sends an invalid request to the system. Users must see a plain-language message, never an exception name or stack trace.</p>
+          <div class="scroll"><table>
+            <thead><tr><th>Test case</th><th>Invalid operation</th><th>Expected message</th><th>Message shown to user</th><th></th></tr></thead>
+            <tbody id="vrows"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- Payroll cases -->
+      <div id="tab-pay" style="display:none">
+        <div class="card">
+          <div class="card-head"><h2>Designed payroll test cases</h2><button class="btn" id="pall">Run all</button></div>
+          <p class="muted" style="margin-top:0">Boundary and decision-table inputs sent to the live pay calculation and compared with the specification.</p>
+          <div class="scroll"><table>
+            <thead><tr><th>Test case</th><th>Input</th><th>Expected (per specification)</th><th>Actual</th><th></th></tr></thead>
+            <tbody id="prows"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x === b));
+  ["suites", "trace", "valid", "pay"].forEach(t => $("tab-" + t).style.display = t === b.dataset.tab ? "" : "none");
+});
+const status = ok => `<span class="pill ${ok ? "ok" : "bad"}">${ok ? "PASS" : "FAIL"}</span>`;
+
+// ---- Test suites ----
+let all = [], reqs = [];
+function draw() {
+  const fr = $("filter").value, kind = $("kind").value;
+  const shown = all.filter(t => (!fr || t.req.split("/").some(x => x === fr || x.startsWith(fr + "."))) && (!kind || t.id.startsWith(kind)));
+  const passed = shown.filter(t => t.passed).length;
+  $("n-all").textContent = shown.length; $("n-pass").textContent = passed; $("n-fail").textContent = shown.length - passed;
+  $("rows").innerHTML = shown.map(t => `<tr class="${t.passed ? "" : "failrow"}"><td>${esc(t.id)}</td><td>${esc(t.req)}</td><td>${esc(t.description)}</td>
+    <td>${esc(t.input)}</td><td>${esc(t.expected)}</td><td>${esc(t.actual)}</td><td>${status(t.passed)}</td></tr>`).join("");
+}
+$("run").onclick = async () => {
+  const r = await api("GET", "/api/tests");
+  if (!r.ok) return toast(r.message, true);
+  all = [...r.blackBox, ...r.whiteBox];
+  reqs = r.requirements; drawTrace();
+  const frs = [...new Set(all.flatMap(t => t.req.split("/")).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  $("filter").innerHTML = `<option value="">All requirements</option>` + frs.map(f => { const q = reqs.find(x => x.id === f); return `<option value="${f}">${f}${q ? " " + esc(q.title) : ""}</option>`; }).join("");
+  $("coverage").textContent = "White-box coverage: " + r.coverage;
+  $("results").style.display = "";
+  draw();
+};
+$("trun").onclick = () => $("run").onclick();
+function drawTrace() {
+  const has = (t, id) => t.req.split("/").includes(id);
+  $("trows").innerHTML = reqs.map(rq => {
+    const top = !rq.id.includes(".");
+    const tests = all.filter(t => has(t, rq.id) || (top && t.req.split("/").some(x => x.startsWith(rq.id + "."))));
+    const failed = tests.filter(t => !t.passed).length;
+    const st = !tests.length ? `<span class="pill bad">NO TESTS</span>` : failed ? `<span class="pill bad">${failed} FAILED</span>` : `<span class="pill ok">ALL PASS</span>`;
+    return `<tr style="${top ? "background:var(--primary-soft);font-weight:600" : ""}"><td>${esc(rq.id)} ${esc(rq.title)}</td><td style="font-weight:400">${esc(rq.description)}</td>
+      <td style="font-weight:400">${tests.length ? tests.map(t => `<span class="${t.passed ? "" : "fail"}">${esc(t.id)}</span>`).join(", ") : "-"}</td><td>${st}</td></tr>`;
+  }).join("");
+}
+$("filter").onchange = draw; $("kind").onchange = draw;
+
+// ---- Validation checks ----
+const VC = [
+  ["BB-EP-03", "Payroll with hours = -5", () => api("POST", "/api/payroll", { hours: -5, rate: 10 }), "Hours worked cannot be negative"],
+  ["BB-BVA-08", "Payroll with rate = -0.01", () => api("POST", "/api/payroll", { hours: 10, rate: -0.01 }), "Hourly rate cannot be negative"],
+  ["BB-EP-08", "Add employee with existing ID E001", () => api("POST", "/api/employees", { id: "E001", name: "Copy", department: "IT", rate: 20 }), "An employee with ID E001 already exists"],
+  ["BB-EP-10", "Update unknown employee E999", () => api("PUT", "/api/employees/E999", { name: "Ghost", department: "X", rate: 10 }), "No employee found with ID E999"],
+  ["BB-EP-12", "Remove unknown employee E999", () => api("DELETE", "/api/employees/E999"), "No employee found with ID E999"],
+  ["BB-EP-16", "Add employee with empty ID", () => api("POST", "/api/employees", { id: "", name: "No Id", department: "IT", rate: 20 }), "Employee id cannot be empty"],
+  ["BB-EP-17", "Add employee with negative rate", () => api("POST", "/api/employees", { id: "E777", name: "Neg", department: "IT", rate: -3 }), "Hourly rate cannot be negative"],
+  ["BB-EP-20", "Payslip for unknown employee E999", () => api("POST", "/api/payslip", { id: "E999", hours: 10 }), "No employee found with ID E999"],
+  ["FR2.5", "Text instead of a number for hours", () => api("POST", "/api/payroll", { hours: "abc", rate: 10 }), "Hours worked must be a number"],
+];
+$("vrows").innerHTML = VC.map((c, i) => `<tr><td>${c[0]}</td><td>${c[1]}</td><td>${c[3]}</td><td id="v${i}" class="muted">not run</td>
+  <td><button class="btn ghost sm" onclick="runV(${i})">Run</button></td></tr>`).join("");
+async function runV(i) {
+  const r = await VC[i][2]();
+  const shown = r.ok ? "(accepted - no error)" : r.message;
+  $("v" + i).innerHTML = `${esc(shown)} ${status(!r.ok && shown === VC[i][3])}`;
+}
+$("vall").onclick = async () => { for (let i = 0; i < VC.length; i++) await runV(i); };
+$("vreset").onclick = async () => { await api("POST", "/api/reset"); VC.forEach((_, i) => $("v" + i).textContent = "not run"); toast("Data reset"); };
+
+// ---- Payroll cases ----
+const PC = [
+  ["BB-EP-01", 20, 10, "gross", 200], ["BB-EP-02", 45, 10, "gross", 475],
+  ["BB-BVA-07", 10, 0, "gross", 0],
+  ["BB-DT-01", 20, 40, "net", 720], ["BB-DT-02", 40, 50, "net", 1600], ["BB-DT-03", 60, 80, "net", 3920],
+  ["BB-DT-04 / BB-BVA-05", 37.5, 80, "net", 2400],
+];
+$("prows").innerHTML = PC.map((c, i) => `<tr><td>${c[0]}</td><td>hours=${c[1]}, rate=${c[2]}</td><td>${c[3]} pay = ${money(c[4])}</td><td id="p${i}" class="muted">not run</td>
+  <td><button class="btn ghost sm" onclick="runP(${i})">Run</button></td></tr>`).join("");
+async function runP(i) {
+  const c = PC[i], r = await api("POST", "/api/payroll", { hours: c[1], rate: c[2] });
+  if (!r.ok) { $("p" + i).innerHTML = esc(r.message) + " " + status(false); return; }
+  const got = Number(r[c[3]]);
+  $("p" + i).innerHTML = `${c[3]} pay = ${money(got)} (tax rate ${Math.round(r.taxRate * 100)}%) ${status(Math.abs(got - c[4]) < 0.005)}`;
+}
+$("pall").onclick = async () => { for (let i = 0; i < PC.length; i++) await runP(i); };
+</script>
+</body>
+</html>

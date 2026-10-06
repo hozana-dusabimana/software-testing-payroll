@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Employees - PayDesk</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js"></script>
+</head>
+<body data-title="Employees" data-sub="Add, edit and remove employee records">
+<div class="layout">
+  <aside id="side"></aside>
+  <div class="content">
+    <header class="topbar" id="top"></header>
+    <main>
+      <div class="card">
+        <div class="card-head">
+          <div class="toolbar">
+            <input id="search" type="search" placeholder="Search by name, ID or department">
+          </div>
+          <button class="btn" id="add">Add employee</button>
+        </div>
+        <div class="scroll"><table>
+          <thead><tr><th>Employee</th><th>ID</th><th>Department</th><th class="num">Hourly rate</th><th class="num">Actions</th></tr></thead>
+          <tbody id="list"></tbody>
+        </table></div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+let staff = [];
+
+function draw() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const rows = staff.filter(e => !q || [e.id, e.name, e.department].some(v => String(v).toLowerCase().includes(q)));
+  document.getElementById("list").innerHTML = rows.map(e =>
+    `<tr><td><div class="person"><div class="avatar">${esc(initials(e.name))}</div>${esc(e.name)}</div></td>
+     <td>${esc(e.id)}</td><td><span class="pill">${esc(e.department)}</span></td><td class="num">${money(e.rate)}</td>
+     <td class="num"><button class="btn ghost sm" data-edit="${esc(e.id)}">Edit</button>
+     <button class="btn ghost sm" data-del="${esc(e.id)}">Remove</button></td></tr>`).join("")
+    || `<tr><td colspan="5" class="empty">${staff.length ? "No employees match your search." : "No employees yet. Click “Add employee” to create one."}</td></tr>`;
+}
+
+async function load() {
+  const r = await api("GET", "/api/employees");
+  if (!r.ok) return toast(r.message, true);
+  staff = r.employees; draw();
+}
+
+function form(existing) {
+  const e = existing || { id: "", name: "", department: "", rate: "" };
+  const m = openModal(`<h2>${existing ? "Edit employee" : "Add employee"}</h2>
+    <div id="err"></div>
+    <div class="form-grid">
+      <div><label for="f-id">Employee ID</label><input id="f-id" value="${esc(e.id)}" placeholder="E100" ${existing ? "disabled" : ""}></div>
+      <div><label for="f-name">Full name</label><input id="f-name" value="${esc(e.name)}" placeholder="Jane Doe"></div>
+      <div><label for="f-dept">Department</label><input id="f-dept" value="${esc(e.department)}" placeholder="Finance"></div>
+      <div><label for="f-rate">Hourly rate</label><input id="f-rate" value="${esc(e.rate)}" placeholder="25.00" inputmode="decimal"></div>
+    </div>
+    <div class="actions"><button class="btn ghost" id="f-cancel">Cancel</button><button class="btn" id="f-save">${existing ? "Save changes" : "Add employee"}</button></div>`);
+  const v = id => m.querySelector(id).value;
+  m.querySelector("#f-cancel").onclick = m.close;
+  m.querySelector("#f-save").onclick = async () => {
+    const data = { name: v("#f-name"), department: v("#f-dept"), rate: v("#f-rate") };
+    const r = existing
+      ? await api("PUT", "/api/employees/" + encodeURIComponent(e.id), data)
+      : await api("POST", "/api/employees", { id: v("#f-id"), ...data });
+    if (!r.ok) { m.querySelector("#err").innerHTML = `<div class="alert err">${esc(r.message)}</div>`; return; }
+    m.close(); toast(r.message); staff = r.employees; draw();
+  };
+  m.querySelector(existing ? "#f-name" : "#f-id").focus();
+}
+
+document.getElementById("add").onclick = () => form(null);
+document.getElementById("search").oninput = draw;
+document.getElementById("list").onclick = async ev => {
+  const edit = ev.target.dataset.edit, del = ev.target.dataset.del;
+  if (edit) form(staff.find(x => x.id === edit));
+  if (del) {
+    if (!await confirmBox("Remove employee", `Remove employee ${del}? This cannot be undone.`, "Remove")) return;
+    const r = await api("DELETE", "/api/employees/" + encodeURIComponent(del));
+    if (!r.ok) return toast(r.message, true);
+    toast(r.message); staff = r.employees; draw();
+  }
+};
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pay Calculator - PayDesk</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js"></script>
+</head>
+<body data-title="Pay Calculator" data-sub="Work out gross pay, tax and net pay from hours and rate">
+<div class="layout">
+  <aside id="side"></aside>
+  <div class="content">
+    <header class="topbar" id="top"></header>
+    <main>
+      <div class="grid two">
+        <div class="card">
+          <div class="card-head"><h2>Calculate pay</h2></div>
+          <div id="err"></div>
+          <div class="form-grid">
+            <div style="grid-column:1/-1"><label for="emp">Employee (optional)</label>
+              <select id="emp"><option value="">Enter a rate manually</option></select></div>
+            <div><label for="hours">Hours worked</label><input id="hours" value="40" inputmode="decimal"></div>
+            <div><label for="rate">Hourly rate</label><input id="rate" value="20" inputmode="decimal"></div>
+          </div>
+          <button class="btn" id="calc">Calculate</button>
+        </div>
+
+        <div class="card" id="result" style="display:none">
+          <div class="card-head"><h2>Pay breakdown</h2></div>
+          <div class="muted">Net pay</div>
+          <div style="font-size:34px;font-weight:700" id="r-net"></div>
+          <div class="bar"><i class="net" id="b-net"></i><i class="tax" id="b-tax"></i></div>
+          <div class="legend"><span><em style="background:var(--primary)"></em>Take-home</span><span><em style="background:#f59e0b"></em>Tax</span></div>
+          <div style="margin-top:14px">
+            <div class="kv"><span>Gross pay</span><b id="r-gross"></b></div>
+            <div class="kv"><span>Tax rate</span><b id="r-rate"></b></div>
+            <div class="kv"><span>Tax withheld</span><b id="r-tax"></b></div>
+            <div class="kv total"><span>Net pay</span><b id="r-net2"></b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>How pay is calculated</h2></div>
+        <div class="grid two" style="margin:0">
+          <div>
+            <b>Hours</b>
+            <p class="muted">The first 40 hours are paid at the hourly rate. Hours beyond 40 are overtime, paid at 1.5 times the rate.</p>
+          </div>
+          <div>
+            <b>Tax brackets (on gross pay)</b>
+            <table style="margin-top:6px">
+              <tr><td>Up to 1,000</td><td class="num">10%</td></tr>
+              <tr><td>1,000 up to 3,000</td><td class="num">20%</td></tr>
+              <tr><td>Above 3,000</td><td class="num">30%</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let staff = [];
+(async () => {
+  const r = await api("GET", "/api/employees");
+  staff = r.employees || [];
+  $("emp").innerHTML += staff.map(e => `<option value="${esc(e.id)}">${esc(e.name)} (${esc(e.id)})</option>`).join("");
+})();
+$("emp").onchange = () => { const e = staff.find(x => x.id === $("emp").value); if (e) $("rate").value = e.rate; };
+
+$("calc").onclick = async () => {
+  const r = await api("POST", "/api/payroll", { hours: $("hours").value, rate: $("rate").value });
+  if (!r.ok) { $("err").innerHTML = `<div class="alert err">${esc(r.message)}</div>`; $("result").style.display = "none"; return; }
+  $("err").innerHTML = "";
+  $("result").style.display = "block";
+  $("r-net").textContent = $("r-net2").textContent = money(r.net);
+  $("r-gross").textContent = money(r.gross);
+  $("r-rate").textContent = Math.round(r.taxRate * 100) + "%";
+  $("r-tax").textContent = money(r.tax);
+  const g = Number(r.gross) || 1;
+  $("b-net").style.width = (Number(r.net) / g * 100) + "%";
+  $("b-tax").style.width = (Number(r.tax) / g * 100) + "%";
+};
+</script>
+</body>
+</html>

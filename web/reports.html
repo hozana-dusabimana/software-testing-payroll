@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payslips and Reports - PayDesk</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js"></script>
+</head>
+<body data-title="Payslips &amp; Reports" data-sub="Generate an employee payslip or the organization payroll summary">
+<div class="layout">
+  <aside id="side"></aside>
+  <div class="content">
+    <header class="topbar" id="top"></header>
+    <main>
+      <div class="tabs no-print">
+        <button class="active" data-tab="slip">Payslip</button>
+        <button data-tab="summary">Payroll summary</button>
+      </div>
+
+      <div id="tab-slip">
+        <div class="card no-print">
+          <div id="err1"></div>
+          <div class="form-grid">
+            <div><label for="emp">Employee</label><select id="emp"></select></div>
+            <div><label for="hours">Hours worked</label><input id="hours" value="40" inputmode="decimal"></div>
+          </div>
+          <button class="btn" id="slip">Generate payslip</button>
+        </div>
+        <div id="slipOut"></div>
+      </div>
+
+      <div id="tab-summary" style="display:none">
+        <div class="card no-print">
+          <div id="err2"></div>
+          <p class="muted" style="margin-top:0">Enter the hours worked in this pay period for each employee.</p>
+          <div class="form-grid" id="hoursInputs"></div>
+          <button class="btn" id="sum">Generate summary</button>
+        </div>
+        <div id="sumOut"></div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let staff = [];
+
+function tab(name) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  $("tab-slip").style.display = name === "slip" ? "" : "none";
+  $("tab-summary").style.display = name === "summary" ? "" : "none";
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => tab(b.dataset.tab));
+if (location.hash === "#summary") tab("summary");
+
+(async () => {
+  const r = await api("GET", "/api/employees");
+  staff = r.employees || [];
+  $("emp").innerHTML = staff.map(e => `<option value="${esc(e.id)}">${esc(e.name)} (${esc(e.id)})</option>`).join("");
+  $("hoursInputs").innerHTML = staff.map(e => `<div><label>${esc(e.name)} <span class="muted">${esc(e.id)}</span></label><input data-id="${esc(e.id)}" value="40" inputmode="decimal"></div>`).join("");
+})();
+
+// The backend returns each report as text lines; render them as a proper document.
+const val = (lines, key) => (lines.find(l => l.startsWith(key + ":")) || "").slice(key.length + 1).trim();
+
+$("slip").onclick = async () => {
+  const r = await api("POST", "/api/payslip", { id: $("emp").value, hours: $("hours").value });
+  $("slipOut").innerHTML = "";
+  if (!r.ok) { $("err1").innerHTML = `<div class="alert err">${esc(r.message)}</div>`; return; }
+  $("err1").innerHTML = "";
+  const L = r.report.split("\n");
+  $("slipOut").innerHTML = `<div class="payslip">
+    <div class="head"><div><h3>Payslip</h3><span class="muted">${esc(val(L, "Department"))}</span></div><div style="text-align:right"><b>PayDesk</b></div></div>
+    <div class="kv"><span class="muted">Employee</span><b>${esc(val(L, "Employee"))}</b></div>
+    <div class="kv"><span class="muted">Hours worked</span><b>${esc(val(L, "Hours worked"))}</b></div>
+    <div class="kv"><span class="muted">Gross pay</span><b>${money(val(L, "Gross pay"))}</b></div>
+    <div class="kv"><span class="muted">Tax</span><b>${money(val(L, "Tax"))}</b></div>
+    <div class="kv total"><span>Net pay</span><b>${money(val(L, "Net pay"))}</b></div>
+    <div class="no-print" style="margin-top:16px"><button class="btn ghost sm" onclick="print()">${icon("print")} Print payslip</button></div></div>`;
+};
+
+$("sum").onclick = async () => {
+  const data = {};
+  document.querySelectorAll("#hoursInputs input").forEach(i => data["hours_" + i.dataset.id] = i.value);
+  const r = await api("POST", "/api/summary", data);
+  $("sumOut").innerHTML = "";
+  if (!r.ok) { $("err2").innerHTML = `<div class="alert err">${esc(r.message)}</div>`; return; }
+  $("err2").innerHTML = "";
+  const rows = r.report.split("\n").map(l => l.match(/^(\S+) - (.+): ([\d.]+) hours, net pay ([\d.]+)$/)).filter(Boolean);
+  const total = val(r.report.split("\n"), "Total net payout");
+  $("sumOut").innerHTML = `<div class="card"><div class="card-head"><h2>Organization payroll summary</h2>
+    <button class="btn ghost sm no-print" onclick="print()">${icon("print")} Print</button></div>
+    <div class="scroll"><table><thead><tr><th>Employee</th><th>ID</th><th class="num">Hours</th><th class="num">Net pay</th></tr></thead><tbody>` +
+    rows.map(m => `<tr><td>${esc(m[2])}</td><td>${esc(m[1])}</td><td class="num">${m[3]}</td><td class="num">${money(m[4])}</td></tr>`).join("") +
+    `<tr><td colspan="3"><b>Total net payout</b></td><td class="num"><b>${money(total)}</b></td></tr></tbody></table></div></div>`;
+};
+</script>
+</body>
+</html>
