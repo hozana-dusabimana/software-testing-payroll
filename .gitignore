@@ -2,3 +2,7 @@ node_modules/
 out/
 *.class
 Test-Case-Report - old.docx
+generate_report.js
+package.json
+package-lock.json
+Test-Case-Report.docx

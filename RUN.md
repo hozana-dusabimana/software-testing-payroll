@@ -35,7 +35,7 @@ Runs the black-box (Equivalence Partitioning, Boundary Value Analysis, Decision 
 white-box (branch/path coverage) suites, printing one Pass/Fail line per test case plus a
 summary. Expected result: 33/35 black-box cases pass, 7/8 white-box cases pass, 10/10 branches
 covered — the 3 failures all trace to the same known defect in
-`PayrollService.calculateTaxRate()` (see `README.md` and Section 8 of `Test-Case-Report.docx`).
+`PayrollService.calculateTaxRate()` (see `README.md`).
 
 ## 4. Run the web demo (for presenting how the requirements were tested)
 
@@ -62,14 +62,3 @@ Run it from the `Homework` folder so the `web/` pages are found. No extra librar
 
 With the Java extension installed, open `src/main/Main.java` or `src/test/TestRunner.java` and
 use the "Run" code lens above `public static void main(...)` instead of the terminal commands.
-
-## Regenerating the report (optional)
-
-Only needed if you change the test suites and want `Test-Case-Report.docx` to reflect it:
-
-```bash
-npm install
-node generate_report.js
-```
-
-This requires Node.js and rebuilds `Test-Case-Report.docx` from the current test results.
